@@ -22,26 +22,20 @@ public enum MessageType {
         return typeId;
     }
 
-    public static AbstractMessage fromInt(int typeId, DataInputStream in) throws IOException {
-        for (MessageType type : MessageType.values()) {
+    public static MessageType fromId(int typeId) {
+        for (MessageType type : values()) {
             if (type.getTypeId() == typeId) {
-                try {
-                    // Erzeugt die Nachricht basierend auf dem Nachrichtentyp und dem InputStream
-                    return type.messageClass.getConstructor(DataInputStream.class).newInstance(in);
-                } catch (Exception e) {
-                    throw new IOException("Fehler beim Instanziieren der Nachricht.", e);
-                }
-            }
-        }
-        throw new IllegalArgumentException("Unbekannter Nachrichtentyp ID: " + typeId);
-    }
-
-    public static MessageType fromString(String str) {
-        for (MessageType type : MessageType.values()) {
-            if (type.name().equalsIgnoreCase(str)) {
                 return type;
             }
         }
-        return null;
+        throw new IllegalArgumentException("Unknown MessageType ID: " + typeId);
+    }
+
+	public AbstractMessage createMessageFromStream(DataInputStream in) throws IOException {
+        try {
+            return messageClass.getDeclaredConstructor(DataInputStream.class).newInstance(in);
+        } catch (Exception e) {
+            throw new IOException("Error creating message from stream", e);
+        }
     }
 }

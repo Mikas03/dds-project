@@ -1,24 +1,29 @@
 package de.luh.vss.chat.client;
 
 import de.luh.vss.chat.common.AbstractMessage;
+import de.luh.vss.chat.common.Message.ChatMessage;
 import de.luh.vss.chat.common.Message.RegisterRequest;
-import de.luh.vss.chat.common.User.UserId;
+import de.luh.vss.chat.common.UserId;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Scanner;
 
-public class InputHandler {
+public class InputHandler implements Runnable {
     private final ChatClient client;
     private final DataInputStream in;
     private final DataOutputStream out;
+    private final UserId userId;
+    private final Scanner scanner;
 
-    // Konstruktor, der die ChatClient-Instanz sowie Input/Output Streams übergibt
-    public InputHandler(ChatClient client, DataInputStream in, DataOutputStream out) {
+    // Konstruktor, der die ChatClient-Instanz sowie Input/Output Streams und UserId übergibt
+    public InputHandler(ChatClient client, DataInputStream in, DataOutputStream out, UserId userId) {
         this.client = client;
         this.in = in;
         this.out = out;
+        this.userId = userId;
+        this.scanner = new Scanner(System.in);
     }
 
     // Nachricht senden
@@ -29,40 +34,35 @@ public class InputHandler {
         }
     }
 
+    @Override
+    public void run() {
+        handleInput();
+    }
+
     // Eingabe des Benutzers behandeln
-    public void handleInput() {
-        Scanner scanner = new Scanner(System.in);
+    private void handleInput() {
+        try {
+            while (true) {
+                System.out.print("Geben Sie eine Nachricht ein: ");
+                String message = scanner.nextLine();
 
-        // Haupt-Loop für Benutzereingaben
-        while (true) {
-            System.out.println("\nGeben Sie eine Option ein (exit, send, show):");
-
-            String command = scanner.nextLine();
-
-            if (command.equalsIgnoreCase("exit")) {
-                client.close();
-                System.out.println("Verbindung geschlossen.");
-                break;
-            }
-
-            // Nachricht an einen Empfänger senden
-            if (command.startsWith("send")) {
-                String[] parts = command.split(" ", 3);
-                if (parts.length == 3) {
-                    String recipient = parts[1];
-                    String message = parts[2];
-                    System.out.print("Geben Sie die Priorität der Nachricht ein: ");
-                    int priority = Integer.parseInt(scanner.nextLine());
-                    client.sendChatMessage(recipient, message, priority); // Nachricht senden
-                } else {
-                    System.out.println("Bitte verwenden Sie das Format: send <Empfänger> <Nachricht>");
+                if (message.equalsIgnoreCase("exit")) {
+                    break;  // Wenn der Benutzer "exit" eingibt, wird der Chat beendet
                 }
-            }
 
-            // Nachrichtenschlange anzeigen
-            if (command.equalsIgnoreCase("show")) {
-                client.showMessageQueue();  // Alle Nachrichten anzeigen
+                // Beispiel einer Chat-Nachricht: Annehmen von "EmpfängerID" und "Priorität"
+                System.out.print("Empfänger-ID: ");
+                String recipientId = scanner.nextLine();
+
+                System.out.print("Priorität: ");
+                int priority = Integer.parseInt(scanner.nextLine());
+
+                // Hier wieder eine Instanziierung von UserId
+                ChatMessage chatMessage = new ChatMessage(userId, new UserId(Integer.parseInt(recipientId)), message, priority);
+                sendMessage(chatMessage);  // Nachricht an den Server senden
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -71,8 +71,8 @@ public class InputHandler {
         RegisterRequest registerRequest = new RegisterRequest(userId);
         try {
             sendMessage(registerRequest);  // Nachricht an den Server senden
-            System.out.println("Benutzer registriert: " + userId.id());
-        } catch (IOException e) {
+            System.out.println("Benutzer registriert: " + userId.getId());
+      } catch (IOException e) {
             e.printStackTrace();
         }
     }

@@ -1,90 +1,57 @@
 package de.luh.vss.chat.client;
 
 import de.luh.vss.chat.common.Message.ChatMessage;
+import de.luh.vss.chat.common.Message.RegisterRequest;
+import de.luh.vss.chat.common.UserId;
 import de.luh.vss.chat.common.AbstractMessage;
 import de.luh.vss.chat.common.MessageType;
-import de.luh.vss.chat.common.User.UserId;
 
 import java.io.*;
 import java.net.*;
-import java.util.PriorityQueue;
+import java.util.Arrays;
+import java.util.Scanner;
 
 public class ChatClient {
-    private static final String SERVER_ADDRESS = "localhost";
-    private static final int SERVER_PORT = 12345;
+    private static final String SERVER_ADDRESS = "127.0.0.1";  // Server-Adresse
+    private static final int SERVER_PORT = 12345;              // Server-Port
+
     private Socket socket;
     private DataInputStream in;
     private DataOutputStream out;
     private UserId userId;
-    private InputHandler inputHandler;
-
-    // Verwende eine PriorityQueue, um die Nachrichten nach Priorität zu sortieren
-    private final PriorityQueue<ChatMessage> messageQueue = new PriorityQueue<>();
+    private Scanner scanner;
+    private int userPort;
 
     public static void main(String[] args) {
-        new ChatClient().start();
+        ChatClient chatClient = new ChatClient();
+        chatClient.start();
     }
 
     public void start() {
         try {
+            // Verbindung zum Server aufbauen
             socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
             in = new DataInputStream(socket.getInputStream());
             out = new DataOutputStream(socket.getOutputStream());
-            
-            inputHandler = new InputHandler(this, in, out);
-            
-            // Benutzerregistrierung
-            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-            System.out.print("Geben Sie Ihren Benutzernamen ein: ");
-            String username = reader.readLine();
-            userId = new UserId(username);
-            
-            inputHandler.registerUser(userId);
-            
-            // Eingabeverarbeitung starten
-            new Thread(() -> inputHandler.handleInput()).start();
+            scanner = new Scanner(System.in);
+
+            // Benutzername eingeben
+            System.out.print("Geben Sie Ihre Benutzer-ID ein (Zahl): ");
+            int userIdNumber = Integer.parseInt(scanner.nextLine());
+            userId = new UserId(userIdNumber);  // Benutzer-ID erstellen
+            userPort = userIdNumber + 3000;
+
+            // Registrierungsanfrage senden
+            RegisterRequest registerRequest = new RegisterRequest(userId);
+            sendMessage(registerRequest);
+
+            // Eingabe-Handler starten
+            Thread inputHandlerThread = new Thread(this::handleInput);
+            inputHandlerThread.start();
 
             // Nachrichten empfangen
-            new Thread(this::receiveMessages).start();
+            receiveMessages();
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // Nachricht senden mit Priorität
-    public void sendChatMessage(String recipient, String message, int priority) {
-        ChatMessage chatMessage = new ChatMessage(userId, new UserId(recipient), message, priority);
-
-        // Füge die Nachricht der Prioritäts-Warteschlange hinzu
-        messageQueue.add(chatMessage);
-
-        try {
-            sendMessage(chatMessage);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void sendMessage(ChatMessage msg) throws IOException {
-        synchronized (out) {
-            out.writeInt(msg.getClass().getSimpleName().hashCode());
-            msg.toStream(out);  // Nachricht über den Outputstream senden
-        }
-    }
-
-    // Nachrichten empfangen
-    private void receiveMessages() {
-        try {
-            while (true) {
-                int type = in.readInt();
-                AbstractMessage msg = MessageType.fromInt(type, in);
-
-                if (msg instanceof ChatMessage) {
-                    ChatMessage chatMessage = (ChatMessage) msg;
-                    System.out.println("Nachricht von " + chatMessage.getSender().id() + ": " + chatMessage.getMessage() + " (Priorität: " + chatMessage.getPriority() + ")");
-                }
-            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -92,27 +59,61 @@ public class ChatClient {
 
     public void close() {
         try {
-            socket.close();
+            if (in != null) in.close();
+            if (out != null) out.close();
+            if (socket != null) socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    // Zeige die Warteschlange der gesendeten Nachrichten nach Priorität
- // Zeige die Warteschlange der gesendeten Nachrichten nach Priorität
-    public void showMessageQueue() {
-        System.out.println("Aktuelle Nachrichtenschlange:");
-        if (messageQueue.isEmpty()) {
-            System.out.println("Die Warteschlange ist leer.");
-        } else {
-            PriorityQueue<ChatMessage> sortedQueue = new PriorityQueue<>(messageQueue);  // Sortiere die Warteschlange
-            while (!sortedQueue.isEmpty()) {
-                ChatMessage message = sortedQueue.poll();
-                System.out.println("Nachricht an " + message.getRecipient().id() + 
-                                   " mit Priorität " + message.getPriority() + ": " + 
-                                   message.getMessage());
+    private void sendMessage(AbstractMessage message) throws IOException {
+        out.writeInt(message.getMessageType().getTypeId()); // Nachrichtentyp senden
+        message.toStream(out);
+    }
+
+    private void handleInput() {
+        try {
+            while (true) {
+                System.out.print("Geben Sie eine Nachricht ein: ");
+                String message = scanner.nextLine();
+
+                if (message.equalsIgnoreCase("exit")) {
+                    break;
+                }
+
+                System.out.print("Empfänger-ID: ");
+                int recipientId = Integer.parseInt(scanner.nextLine());
+
+                System.out.print("Priorität: ");
+                int priority = Integer.parseInt(scanner.nextLine());
+
+                ChatMessage chatMessage = new ChatMessage(userId, new UserId(recipientId), message, priority);
+                sendMessage(chatMessage);
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
+    private void receiveMessages() {
+        try (DatagramSocket dSocket = new DatagramSocket(userPort)) {
+        	byte[] buffer = new byte[1024];
+            while (true) {
+            	
+            	DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+            	dSocket.receive(packet);
+            	byte[] data = Arrays.copyOf(packet.getData(), packet.getLength());
+            	DataInputStream dataIn = new DataInputStream(new ByteArrayInputStream(data));
+            	try {
+            		ChatMessage message = ChatMessage.fromStream(dataIn);
+            		System.out.println("you received message: " + message.getMessage());
+            	} catch (Exception e) {
+            		e.printStackTrace();
+            	}
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }

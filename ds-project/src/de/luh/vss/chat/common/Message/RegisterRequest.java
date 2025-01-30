@@ -1,7 +1,8 @@
 package de.luh.vss.chat.common.Message;
 
 import de.luh.vss.chat.common.AbstractMessage;
-import de.luh.vss.chat.common.User.UserId;
+import de.luh.vss.chat.common.MessageType;
+import de.luh.vss.chat.common.UserId;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -20,11 +21,16 @@ public class RegisterRequest extends AbstractMessage {
 
     @Override
     public void toStream(DataOutputStream out) throws IOException {
-        out.writeUTF(userId.id());
+        out.writeInt(userId.getId());
     }
 
     public static RegisterRequest fromStream(DataInputStream in) throws IOException {
-        UserId userId = new UserId(in.readUTF());
-        return new RegisterRequest(userId);
+        int id = in.readInt();
+        return new RegisterRequest(new UserId(id));
     }
+    @Override
+    public MessageType getMessageType() {
+        return MessageType.REGISTER_REQUEST;
+    }
+
 }
